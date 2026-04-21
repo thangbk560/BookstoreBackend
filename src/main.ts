@@ -10,6 +10,7 @@ async function bootstrap() {
     origin: [
       process.env.FRONTEND_URL,
       'https://bookstore-frontend-eight-theta.vercel.app',
+      'https://bookstore-frontend-*.vercel.app',
       'https://thangbk560.id.vn',
       'http://localhost:3000',
     ],
