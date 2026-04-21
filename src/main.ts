@@ -7,7 +7,12 @@ async function bootstrap() {
 
   // Enable CORS
   app.enableCors({
-    origin: process.env.FRONTEND_URL || 'https://bookstore-frontend-eight-theta.vercel.app/',
+    origin: [
+      process.env.FRONTEND_URL,
+      'https://bookstore-frontend-eight-theta.vercel.app/',
+      'https://thangbk560.id.vn',
+      'http://localhost:3000', // cho development
+    ],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
