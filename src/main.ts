@@ -11,7 +11,7 @@ async function bootstrap() {
       process.env.FRONTEND_URL,
       'https://bookstore-frontend-eight-theta.vercel.app/',
       'https://thangbk560.id.vn',
-      'http://localhost:3000', // cho development
+      'http://localhost:3000',
     ],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
