@@ -9,8 +9,11 @@ async function bootstrap() {
   app.enableCors({
     origin: [
       process.env.FRONTEND_URL,
+      'https://bookstore-frontend-thangbk560s-projects.vercel.app',
+      'https://bookstore-frontend-git-main-thangbk560s-projects.vercel.app',
+      'https://bookstore-frontend-9zxmx2psb-thangbk560s-projects.vercel.app/',
       'https://bookstore-frontend-eight-theta.vercel.app',
-      'https://bookstore-frontend-*.vercel.app',
+      'https://www.thangbk560.id.vn',
       'https://thangbk560.id.vn',
       'http://localhost:3000',
     ],
