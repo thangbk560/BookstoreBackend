@@ -8,12 +8,7 @@ async function bootstrap() {
   // Lấy FRONTEND_URL từ env hoặc dùng mặc định
   const frontendUrls = [
     process.env.FRONTEND_URL,
-    'https://bookstore-frontend-eight-theta.vercel.app',
-    'https://www.thangbk560.id.vn',
     'https://thangbk560.id.vn',
-    'https://bookstore-frontend-thangbk560s-projects.vercel.app',
-    'https://bookstore-frontend-git-main-thangbk560s-projects.vercel.app',
-    'http://localhost:3000',
   ].filter(url => url); // Loại bỏ undefined
 
   // Cấu hình CORS chi tiết
