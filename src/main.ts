@@ -7,19 +7,8 @@ async function bootstrap() {
 
   // Enable CORS
   app.enableCors({
-    origin: [
-      process.env.FRONTEND_URL,
-      'https://bookstore-frontend-thangbk560s-projects.vercel.app',
-      'https://bookstore-frontend-git-main-thangbk560s-projects.vercel.app',
-      'https://bookstore-frontend-9zxmx2psb-thangbk560s-projects.vercel.app/',
-      'https://bookstore-frontend-eight-theta.vercel.app',
-      'https://www.thangbk560.id.vn',
-      'https://thangbk560.id.vn',
-      'http://localhost:3000',
-    ],
+    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
     credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
   });
 
   // Global validation pipe
