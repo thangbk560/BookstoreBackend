@@ -1,4 +1,5 @@
-import { Controller, Post, Body, Get, UseGuards, Request, Res, UnauthorizedException } from '@nestjs/common';
+import { Controller, Post, Body, Get, UseGuards, Request, Res, UnauthorizedException, Query } from '@nestjs/common';
+import { Response } from 'express';
 import { AuthGuard } from '@nestjs/passport';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
@@ -16,7 +17,6 @@ export class AuthController {
         return this.authService.register(name, email, password);
     }
 
-    // Alias for register to match frontend
     @Post('signup')
     async signup(
         @Body('name') name: string,
@@ -67,10 +67,8 @@ export class AuthController {
                 return res.redirect(`${process.env.FRONTEND_URL}/auth/login?error=no_code`);
             }
 
-            // Gọi service để exchange code lấy user info
             const result = await this.authService.validateGoogleUser(code);
             
-            // Redirect về frontend với token
             const redirectUrl = `${process.env.FRONTEND_URL}/auth/callback?access_token=${result.access_token}&refresh_token=${result.refresh_token}`;
             
             console.log('Redirecting to:', redirectUrl);
@@ -82,7 +80,6 @@ export class AuthController {
         }
     }
 
-    // OTP endpoints
     @Post('send-otp')
     async sendOTP(@Body('email') email: string) {
         return this.authService.sendOTP(email);
@@ -96,7 +93,6 @@ export class AuthController {
         return this.authService.verifyOTP(email, otp);
     }
 
-    // Password reset endpoints
     @Post('forgot-password')
     async forgotPassword(@Body('email') email: string) {
         return this.authService.forgotPassword(email);
@@ -116,18 +112,13 @@ export class AuthController {
         return req.user;
     }
 
-    // Alias for profile to match frontend expectations
     @UseGuards(JwtAuthGuard)
     @Get('me')
     getCurrentUser(@Request() req) {
-        // req.user comes from JWT strategy validation
-        // It contains { userId, email, user }
         const user = req.user.user;
-
         if (!user) {
             throw new UnauthorizedException('User not found');
         }
-
         return {
             id: user._id,
             email: user.email,

@@ -3,10 +3,13 @@ import { JwtService } from '@nestjs/jwt';
 import { UsersService } from '../users/users.service';
 import { MailService } from '../mail/mail.service';
 import { OtpService } from './otp.service';
-import axios from 'axios';
 import * as bcrypt from 'bcrypt';
 import * as svgCaptcha from 'svg-captcha';
 import * as crypto from 'crypto';
+import axios from 'axios';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
+import { User } from '../users/schemas/user.schema';
 
 @Injectable()
 export class AuthService {
@@ -15,6 +18,7 @@ export class AuthService {
         private jwtService: JwtService,
         private mailService: MailService,
         private otpService: OtpService,
+        @InjectModel(User.name) private userModel: Model<User>,
     ) { }
 
     async register(name: string, email: string, password: string) {
@@ -295,7 +299,7 @@ export class AuthService {
                 headers: { Authorization: `Bearer ${access_token}` },
             });
 
-            const { email, name, picture } = userResponse.data;
+            const { email, name, picture, id: googleId } = userResponse.data;
 
             // 3. Tìm hoặc tạo user trong database
             let user = await this.userModel.findOne({ email });
@@ -304,9 +308,10 @@ export class AuthService {
                 user = await this.userModel.create({
                     email,
                     name: name || email.split('@')[0],
-                    googleId: userResponse.data.id,
+                    googleId: googleId,
                     avatar: picture,
                     role: 'user',
+                    isActive: true,  // Google users are active by default
                 });
             }
 
