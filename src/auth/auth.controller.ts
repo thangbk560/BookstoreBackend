@@ -1,7 +1,22 @@
-import { Controller, Post, Body, Get, UseGuards, Request, Res, UnauthorizedException, Query } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  Get,
+  UseGuards,
+  Request,
+  Res,
+  UnauthorizedException,
+  Query,
+} from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+
+class GoogleTokenDto {
+  id_token?: string;
+  access_token?: string;
+}
 
 @Controller('auth')
 export class AuthController {
@@ -53,32 +68,18 @@ export class AuthController {
         return this.authService.refresh(refreshToken);
     }
 
-    @Get('google/callback')
-    async googleCallback(
-        @Query('code') code: string,
-        @Res() res  // Không cần type Response
-    ) {
-        try {
-            console.log('Received Google code:', code ? 'Yes' : 'No');
-            
-            if (!code) {
-                console.error('No code provided');
-                return res.redirect(`${process.env.FRONTEND_URL}/auth/login?error=no_code`);
-            }
-
-            const result = await this.authService.validateGoogleUser(code);
-            
-            const redirectUrl = `${process.env.FRONTEND_URL}/auth/callback?access_token=${result.access_token}&refresh_token=${result.refresh_token}`;
-            
-            console.log('Redirecting to:', redirectUrl);
-            
-            return res.redirect(redirectUrl);
-        } catch (error) {
-            console.error('Google callback error:', error);
-            return res.redirect(`${process.env.FRONTEND_URL}/auth/login?error=auth_failed`);
+    // ========== GOOGLE OAUTH FLOW MỚI ==========
+    // Frontend gửi ID Token lên đây
+    @Post('google-token')
+    async googleTokenAuth(@Body() body: GoogleTokenDto) {
+        const token = body.id_token || body.access_token;
+        if (!token) {
+            throw new UnauthorizedException('No token provided');
         }
+        return this.authService.verifyGoogleToken(token);
     }
 
+    // OTP endpoints
     @Post('send-otp')
     async sendOTP(@Body('email') email: string) {
         return this.authService.sendOTP(email);
