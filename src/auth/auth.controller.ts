@@ -54,25 +54,32 @@ export class AuthController {
         return this.authService.refresh(refreshToken);
     }
 
-    // Google OAuth routes
-    @Get('google')
-    @UseGuards(AuthGuard('google'))
-    async googleAuth() {
-        // Guard redirects to Google
-    }
-
     @Get('google/callback')
-    @UseGuards(AuthGuard('google'))
-    async googleAuthCallback(@Request() req, @Res() res) {
-        // Generate JWT for the authenticated user
-        const payload = { email: req.user.email, sub: req.user._id, role: req.user.role };
-        const access_token = this.authService.generateToken(payload);
-        const refresh_token = this.authService.generateToken(payload, '30d');
+    async googleCallback(
+        @Query('code') code: string,
+        @Res() res: Response
+    ) {
+        try {
+            console.log('Received Google code:', code ? 'Yes' : 'No');
+            
+            if (!code) {
+                console.error('No code provided');
+                return res.redirect(`${process.env.FRONTEND_URL}/auth/login?error=no_code`);
+            }
 
-        // Redirect to frontend with tokens
-        res.redirect(
-            `${process.env.FRONTEND_URL}/auth/callback?access_token=${access_token}&refresh_token=${refresh_token}`
-        );
+            // Gọi service để exchange code lấy user info
+            const result = await this.authService.validateGoogleUser(code);
+            
+            // Redirect về frontend với token
+            const redirectUrl = `${process.env.FRONTEND_URL}/auth/callback?access_token=${result.access_token}&refresh_token=${result.refresh_token}`;
+            
+            console.log('Redirecting to:', redirectUrl);
+            
+            return res.redirect(redirectUrl);
+        } catch (error) {
+            console.error('Google callback error:', error);
+            return res.redirect(`${process.env.FRONTEND_URL}/auth/login?error=auth_failed`);
+        }
     }
 
     // OTP endpoints

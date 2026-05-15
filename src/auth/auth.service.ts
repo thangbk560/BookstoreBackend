@@ -3,6 +3,7 @@ import { JwtService } from '@nestjs/jwt';
 import { UsersService } from '../users/users.service';
 import { MailService } from '../mail/mail.service';
 import { OtpService } from './otp.service';
+import axios from 'axios';
 import * as bcrypt from 'bcrypt';
 import * as svgCaptcha from 'svg-captcha';
 import * as crypto from 'crypto';
@@ -275,5 +276,64 @@ export class AuthService {
             image: captcha.data,
             id: id,
         };
+    }
+    async validateGoogleUser(code: string) {
+        try {
+            // 1. Exchange code lấy access_token từ Google
+            const tokenResponse = await axios.post('https://oauth2.googleapis.com/token', {
+                code,
+                client_id: process.env.GOOGLE_CLIENT_ID,
+                client_secret: process.env.GOOGLE_CLIENT_SECRET,
+                redirect_uri: `${process.env.FRONTEND_URL}/api/auth/google/callback`,
+                grant_type: 'authorization_code',
+            });
+
+            const { access_token } = tokenResponse.data;
+
+            // 2. Lấy user info từ Google
+            const userResponse = await axios.get('https://www.googleapis.com/oauth2/v2/userinfo', {
+                headers: { Authorization: `Bearer ${access_token}` },
+            });
+
+            const { email, name, picture } = userResponse.data;
+
+            // 3. Tìm hoặc tạo user trong database
+            let user = await this.userModel.findOne({ email });
+            
+            if (!user) {
+                user = await this.userModel.create({
+                    email,
+                    name: name || email.split('@')[0],
+                    googleId: userResponse.data.id,
+                    avatar: picture,
+                    role: 'user',
+                });
+            }
+
+            // 4. Tạo JWT token
+            const payload = { sub: user._id, email: user.email, role: user.role };
+            const access_token_jwt = this.jwtService.sign(payload, {
+                secret: process.env.JWT_SECRET,
+                expiresIn: '7d',
+            });
+            const refresh_token = this.jwtService.sign(payload, {
+                secret: process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET,
+                expiresIn: '30d',
+            });
+
+            return {
+                access_token: access_token_jwt,
+                refresh_token: refresh_token,
+                user: {
+                    id: user._id,
+                    email: user.email,
+                    name: user.name,
+                    role: user.role,
+                },
+            };
+        } catch (error) {
+            console.error('Google validation error:', error.response?.data || error.message);
+            throw new Error('Failed to validate Google user');
+        }
     }
 }

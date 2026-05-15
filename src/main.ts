@@ -46,15 +46,6 @@ async function bootstrap() {
     }),
   );
 
-  app.use('/api/auth/google/callback', (req, res, next) => {
-    // Chuyển hướng từ flowName param về URL không có param
-    if (req.query.flowName) {
-      const cleanUrl = `/api/auth/google/callback?code=${req.query.code}`;
-      return res.redirect(cleanUrl);
-    }
-    next();
-  });
-
   // API prefix
   app.setGlobalPrefix('api');
 
