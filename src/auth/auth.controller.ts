@@ -1,5 +1,4 @@
 import { Controller, Post, Body, Get, UseGuards, Request, Res, UnauthorizedException, Query } from '@nestjs/common';
-import { Response } from 'express';
 import { AuthGuard } from '@nestjs/passport';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
@@ -57,7 +56,7 @@ export class AuthController {
     @Get('google/callback')
     async googleCallback(
         @Query('code') code: string,
-        @Res() res: Response
+        @Res() res  // Không cần type Response
     ) {
         try {
             console.log('Received Google code:', code ? 'Yes' : 'No');

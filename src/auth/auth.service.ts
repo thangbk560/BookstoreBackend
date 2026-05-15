@@ -6,10 +6,6 @@ import { OtpService } from './otp.service';
 import * as bcrypt from 'bcrypt';
 import * as svgCaptcha from 'svg-captcha';
 import * as crypto from 'crypto';
-import axios from 'axios';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
-import { User } from '../users/schemas/user.schema';
 
 @Injectable()
 export class AuthService {
@@ -18,7 +14,6 @@ export class AuthService {
         private jwtService: JwtService,
         private mailService: MailService,
         private otpService: OtpService,
-        @InjectModel(User.name) private userModel: Model<User>,
     ) { }
 
     async register(name: string, email: string, password: string) {
@@ -280,65 +275,132 @@ export class AuthService {
             image: captcha.data,
             id: id,
         };
+    }import { Controller, Post, Body, Get, UseGuards, Request, Res, UnauthorizedException, Query } from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
+import { AuthService } from './auth.service';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
+
+@Controller('auth')
+export class AuthController {
+    constructor(private authService: AuthService) { }
+
+    @Post('register')
+    async register(
+        @Body('name') name: string,
+        @Body('email') email: string,
+        @Body('password') password: string,
+    ) {
+        return this.authService.register(name, email, password);
     }
-    async validateGoogleUser(code: string) {
+
+    @Post('signup')
+    async signup(
+        @Body('name') name: string,
+        @Body('email') email: string,
+        @Body('password') password: string,
+    ) {
+        return this.authService.register(name, email, password);
+    }
+
+    @Post('verify-registration')
+    async verifyRegistration(
+        @Body('email') email: string,
+        @Body('otp') otp: string,
+    ) {
+        return this.authService.verifyRegistration(email, otp);
+    }
+
+    @Get('captcha')
+    async getCaptcha() {
+        return this.authService.generateCaptcha();
+    }
+
+    @Post('login')
+    async login(
+        @Body('email') email: string,
+        @Body('password') password: string,
+        @Body('captcha') captcha?: string,
+        @Body('captchaId') captchaId?: string,
+    ) {
+        return this.authService.login(email, password, captcha, captchaId);
+    }
+
+    @Post('refresh')
+    async refresh(@Body('refreshToken') refreshToken: string) {
+        return this.authService.refresh(refreshToken);
+    }
+
+    @Get('google/callback')
+    async googleCallback(
+        @Query('code') code: string,
+        @Res() res
+    ) {
         try {
-            // 1. Exchange code lấy access_token từ Google
-            const tokenResponse = await axios.post('https://oauth2.googleapis.com/token', {
-                code,
-                client_id: process.env.GOOGLE_CLIENT_ID,
-                client_secret: process.env.GOOGLE_CLIENT_SECRET,
-                redirect_uri: `${process.env.FRONTEND_URL}/api/auth/google/callback`,
-                grant_type: 'authorization_code',
-            });
-
-            const { access_token } = tokenResponse.data;
-
-            // 2. Lấy user info từ Google
-            const userResponse = await axios.get('https://www.googleapis.com/oauth2/v2/userinfo', {
-                headers: { Authorization: `Bearer ${access_token}` },
-            });
-
-            const { email, name, picture, id: googleId } = userResponse.data;
-
-            // 3. Tìm hoặc tạo user trong database
-            let user = await this.userModel.findOne({ email });
+            console.log('Received Google code:', code ? 'Yes' : 'No');
             
-            if (!user) {
-                user = await this.userModel.create({
-                    email,
-                    name: name || email.split('@')[0],
-                    googleId: googleId,
-                    avatar: picture,
-                    role: 'user',
-                    isActive: true,  // Google users are active by default
-                });
+            if (!code) {
+                console.error('No code provided');
+                return res.redirect(`${process.env.FRONTEND_URL}/auth/login?error=no_code`);
             }
 
-            // 4. Tạo JWT token
-            const payload = { sub: user._id, email: user.email, role: user.role };
-            const access_token_jwt = this.jwtService.sign(payload, {
-                secret: process.env.JWT_SECRET,
-                expiresIn: '7d',
-            });
-            const refresh_token = this.jwtService.sign(payload, {
-                secret: process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET,
-                expiresIn: '30d',
-            });
-
-            return {
-                access_token: access_token_jwt,
-                refresh_token: refresh_token,
-                user: {
-                    id: user._id,
-                    email: user.email,
-                    name: user.name,
-                    role: user.role,
-                },
-            };
+            const result = await this.authService.validateGoogleUser(code);
+            
+            const redirectUrl = `${process.env.FRONTEND_URL}/auth/callback?access_token=${result.access_token}&refresh_token=${result.refresh_token}`;
+            
+            console.log('Redirecting to:', redirectUrl);
+            
+            return res.redirect(redirectUrl);
         } catch (error) {
-            console.error('Google validation error:', error.response?.data || error.message);
-            throw new Error('Failed to validate Google user');
+            console.error('Google callback error:', error);
+            return res.redirect(`${process.env.FRONTEND_URL}/auth/login?error=auth_failed`);
         }
     }
+
+    @Post('send-otp')
+    async sendOTP(@Body('email') email: string) {
+        return this.authService.sendOTP(email);
+    }
+
+    @Post('verify-otp')
+    async verifyOTP(
+        @Body('email') email: string,
+        @Body('otp') otp: string,
+    ) {
+        return this.authService.verifyOTP(email, otp);
+    }
+
+    @Post('forgot-password')
+    async forgotPassword(@Body('email') email: string) {
+        return this.authService.forgotPassword(email);
+    }
+
+    @Post('reset-password')
+    async resetPassword(
+        @Body('token') token: string,
+        @Body('password') password: string,
+    ) {
+        return this.authService.resetPassword(token, password);
+    }
+
+    @UseGuards(JwtAuthGuard)
+    @Get('profile')
+    getProfile(@Request() req) {
+        return req.user;
+    }
+
+    @UseGuards(JwtAuthGuard)
+    @Get('me')
+    getCurrentUser(@Request() req) {
+        const user = req.user.user;
+        if (!user) {
+            throw new UnauthorizedException('User not found');
+        }
+        return {
+            id: user._id,
+            email: user.email,
+            name: user.name,
+            role: user.role,
+        };
+    }
 }
+
