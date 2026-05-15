@@ -6,21 +6,79 @@ import { OtpService } from './otp.service';
 import * as bcrypt from 'bcrypt';
 import * as svgCaptcha from 'svg-captcha';
 import * as crypto from 'crypto';
+import { OAuth2Client } from 'google-auth-library';
 
 @Injectable()
 export class AuthService {
+    private googleClient: OAuth2Client;
+
     constructor(
         private usersService: UsersService,
         private jwtService: JwtService,
         private mailService: MailService,
         private otpService: OtpService,
-    ) { }
+    ) {
+        this.googleClient = new OAuth2Client(
+            process.env.GOOGLE_CLIENT_ID,
+            process.env.GOOGLE_CLIENT_SECRET,
+        );
+    }
 
+    // ========== GOOGLE TOKEN VERIFICATION ==========
+    async verifyGoogleToken(idToken: string) {
+        try {
+            const ticket = await this.googleClient.verifyIdToken({
+                idToken: idToken,
+                audience: process.env.GOOGLE_CLIENT_ID,
+            });
+
+            const payload = ticket.getPayload();
+            if (!payload || !payload.email) {
+                throw new UnauthorizedException('Invalid Google token');
+            }
+
+            const email = payload.email;
+            const name = payload.name || email.split('@')[0];
+            const googleId = payload.sub;
+
+            let user = await this.usersService.findByEmail(email);
+            
+            if (!user) {
+                user = await this.usersService.create({
+                    email: email,
+                    name: name,
+                    googleId: googleId,
+                    isActive: true,
+                });
+            } else if (!user.googleId) {
+                await this.usersService.updateGoogleId(user._id.toString(), googleId);
+                user = await this.usersService.findByEmail(email);
+            }
+
+            const jwtPayload = { email: user.email, sub: user._id, role: user.role };
+            const access_token = this.jwtService.sign(jwtPayload);
+            const refresh_token = this.jwtService.sign(jwtPayload, { expiresIn: '30d' });
+
+            return {
+                access_token,
+                refresh_token,
+                user: {
+                    id: user._id,
+                    name: user.name,
+                    email: user.email,
+                    role: user.role,
+                },
+            };
+        } catch (error) {
+            console.error('Google token verification failed:', error);
+            throw new UnauthorizedException('Invalid Google token');
+        }
+    }
+
+    // ========== EXISTING METHODS ==========
     async register(name: string, email: string, password: string) {
-        // Check if user already exists
         const existingUser = await this.usersService.findByEmail(email);
         if (existingUser) {
-            // If user exists but is not active (pending verification), resend OTP
             if (!existingUser.isActive) {
                 const otp = this.otpService.generateOTP();
                 await this.otpService.storeOTP(email, otp);
@@ -30,18 +88,14 @@ export class AuthService {
             throw new UnauthorizedException('Email already registered');
         }
 
-        // Hash password
         const hashedPassword = await bcrypt.hash(password, 10);
-
-        // Create user with isActive: false
         await this.usersService.create({
             name,
             email,
             password: hashedPassword,
-            isActive: false, // User must verify OTP to activate
+            isActive: false,
         });
 
-        // Generate and send OTP
         const otp = this.otpService.generateOTP();
         await this.otpService.storeOTP(email, otp);
         await this.mailService.sendOTP(email, otp);
@@ -63,7 +117,6 @@ export class AuthService {
         user.isActive = true;
         await user.save();
 
-        // Generate tokens
         const payload = { email: user.email, sub: user._id, role: user.role };
         const access_token = this.jwtService.sign(payload);
         const refresh_token = this.jwtService.sign(payload, { expiresIn: '30d' });
@@ -81,24 +134,20 @@ export class AuthService {
     }
 
     async login(email: string, password: string, captcha?: string, captchaId?: string) {
-        // Find user
         const user = await this.usersService.findByEmail(email);
         if (!user) {
             throw new UnauthorizedException('Thông tin đăng nhập không hợp lệ');
         }
 
-        // Check if account is active
         if (!user.isActive) {
             throw new UnauthorizedException('Tài khoản chưa được kích hoạt. Vui lòng xác nhận email.');
         }
 
-        // Check if account is locked
         if (user.lockUntil && user.lockUntil > new Date()) {
             const minutesLeft = Math.ceil((user.lockUntil.getTime() - Date.now()) / 60000);
             throw new UnauthorizedException(`Tài khoản bị khóa. Vui lòng thử lại sau ${minutesLeft} phút.`);
         }
 
-        // Check if CAPTCHA is required (after 3 failed attempts)
         if ((user.failedLoginAttempts || 0) >= 3) {
             if (!captcha || !captchaId) {
                 return { requireCaptcha: true, message: 'Yêu cầu CAPTCHA' };
@@ -110,15 +159,12 @@ export class AuthService {
             }
         }
 
-        // Check password
         const isPasswordValid = await bcrypt.compare(password, user.password);
         if (!isPasswordValid) {
-            // Increment failed attempts
             user.failedLoginAttempts = (user.failedLoginAttempts || 0) + 1;
 
-            // Lock account after 5 failed attempts
             if (user.failedLoginAttempts >= 5) {
-                user.lockUntil = new Date(Date.now() + 10 * 60 * 1000); // Lock for 10 minutes
+                user.lockUntil = new Date(Date.now() + 10 * 60 * 1000);
             }
 
             await user.save();
@@ -133,14 +179,12 @@ export class AuthService {
             throw new UnauthorizedException('Thông tin đăng nhập không hợp lệ');
         }
 
-        // Reset failed attempts on successful login
         if (user.failedLoginAttempts > 0) {
             user.failedLoginAttempts = 0;
-            user.lockUntil = null as any; // TypeScript workaround
+            user.lockUntil = null as any;
             await user.save();
         }
 
-        // Generate tokens
         const payload = { email: user.email, sub: user._id, role: user.role };
         const access_token = this.jwtService.sign(payload);
         const refresh_token = this.jwtService.sign(payload, { expiresIn: '30d' });
@@ -160,16 +204,12 @@ export class AuthService {
 
     async refresh(refreshToken: string) {
         try {
-            // Verify refresh token
             const decoded = this.jwtService.verify(refreshToken);
-
-            // Get user
             const user = await this.usersService.findOne(decoded.sub);
             if (!user) {
                 throw new UnauthorizedException('Invalid token');
             }
 
-            // Generate new tokens
             const payload = { email: user.email, sub: user._id, role: user.role };
             const access_token = this.jwtService.sign(payload);
             const new_refresh_token = this.jwtService.sign(payload, { expiresIn: '30d' });
@@ -193,7 +233,6 @@ export class AuthService {
         return this.usersService.findOne(userId);
     }
 
-    // Helper method for generating tokens (used by Google OAuth)
     generateToken(payload: any, expiresIn?: string) {
         if (expiresIn) {
             return this.jwtService.sign(payload, { expiresIn } as any);
@@ -201,7 +240,6 @@ export class AuthService {
         return this.jwtService.sign(payload);
     }
 
-    // OTP Methods
     async sendOTP(email: string) {
         const user = await this.usersService.findByEmail(email);
         if (!user) {
@@ -224,17 +262,15 @@ export class AuthService {
         return { message: 'OTP verified successfully' };
     }
 
-    // Password Reset Methods
     async forgotPassword(email: string) {
         const user = await this.usersService.findByEmail(email);
         if (!user) {
-            // Don't reveal if email exists
             return { message: 'If email exists, password reset link has been sent' };
         }
 
         const resetToken = this.otpService.generateResetToken();
         user.resetPasswordToken = resetToken;
-        user.resetPasswordExpires = new Date(Date.now() + 3600000); // 1 hour
+        user.resetPasswordExpires = new Date(Date.now() + 3600000);
         await user.save();
 
         await this.mailService.sendPasswordReset(email, resetToken);
@@ -243,14 +279,12 @@ export class AuthService {
     }
 
     async resetPassword(token: string, newPassword: string) {
-        // Find user by token
         const user = await this.usersService.findByResetToken(token);
 
         if (!user) {
             throw new UnauthorizedException('Invalid or expired reset token');
         }
 
-        // Hash new password
         const hashedPassword = await bcrypt.hash(newPassword, 10);
         user.password = hashedPassword;
         user.resetPasswordToken = null as any;
