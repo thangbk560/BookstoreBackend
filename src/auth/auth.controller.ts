@@ -1,22 +1,7 @@
-import {
-  Controller,
-  Post,
-  Body,
-  Get,
-  UseGuards,
-  Request,
-  Res,
-  UnauthorizedException,
-  Query,
-} from '@nestjs/common';
+import { Controller, Post, Body, Get, UseGuards, Request, Res, UnauthorizedException } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
-
-class GoogleTokenDto {
-  id_token?: string;
-  access_token?: string;
-}
 
 @Controller('auth')
 export class AuthController {
@@ -31,6 +16,7 @@ export class AuthController {
         return this.authService.register(name, email, password);
     }
 
+    // Alias for register to match frontend
     @Post('signup')
     async signup(
         @Body('name') name: string,
@@ -68,15 +54,25 @@ export class AuthController {
         return this.authService.refresh(refreshToken);
     }
 
-    // ========== GOOGLE OAUTH FLOW MỚI ==========
-    // Frontend gửi ID Token lên đây
-    @Post('google-token')
-    async googleTokenAuth(@Body() body: GoogleTokenDto) {
-        const token = body.id_token || body.access_token;
-        if (!token) {
-            throw new UnauthorizedException('No token provided');
-        }
-        return this.authService.verifyGoogleToken(token);
+    // Google OAuth routes
+    @Get('google')
+    @UseGuards(AuthGuard('google'))
+    async googleAuth() {
+        // Guard redirects to Google
+    }
+
+    @Get('google/callback')
+    @UseGuards(AuthGuard('google'))
+    async googleAuthCallback(@Request() req, @Res() res) {
+        // Generate JWT for the authenticated user
+        const payload = { email: req.user.email, sub: req.user._id, role: req.user.role };
+        const access_token = this.authService.generateToken(payload);
+        const refresh_token = this.authService.generateToken(payload, '30d');
+
+        // Redirect to frontend with tokens
+        res.redirect(
+            `${process.env.FRONTEND_URL}/auth/callback?access_token=${access_token}&refresh_token=${refresh_token}`
+        );
     }
 
     // OTP endpoints
@@ -93,6 +89,7 @@ export class AuthController {
         return this.authService.verifyOTP(email, otp);
     }
 
+    // Password reset endpoints
     @Post('forgot-password')
     async forgotPassword(@Body('email') email: string) {
         return this.authService.forgotPassword(email);
@@ -112,13 +109,18 @@ export class AuthController {
         return req.user;
     }
 
+    // Alias for profile to match frontend expectations
     @UseGuards(JwtAuthGuard)
     @Get('me')
     getCurrentUser(@Request() req) {
+        // req.user comes from JWT strategy validation
+        // It contains { userId, email, user }
         const user = req.user.user;
+
         if (!user) {
             throw new UnauthorizedException('User not found');
         }
+
         return {
             id: user._id,
             email: user.email,

@@ -6,78 +6,15 @@ import { OtpService } from './otp.service';
 import * as bcrypt from 'bcrypt';
 import * as svgCaptcha from 'svg-captcha';
 import * as crypto from 'crypto';
-import { OAuth2Client } from 'google-auth-library';
 
 @Injectable()
 export class AuthService {
-    private googleClient: OAuth2Client;
-
     constructor(
         private usersService: UsersService,
         private jwtService: JwtService,
         private mailService: MailService,
         private otpService: OtpService,
-    ) {
-        this.googleClient = new OAuth2Client(
-            process.env.GOOGLE_CLIENT_ID,
-            process.env.GOOGLE_CLIENT_SECRET,
-        );
-    }
-
-    async verifyGoogleToken(idToken: string) {
-        try {
-            const ticket = await this.googleClient.verifyIdToken({
-                idToken: idToken,
-                audience: process.env.GOOGLE_CLIENT_ID,
-            });
-
-            const payload = ticket.getPayload();
-            if (!payload || !payload.email) {
-                throw new UnauthorizedException('Invalid Google token');
-            }
-
-            const email = payload.email;
-            const name = payload.name || email.split('@')[0];
-            const googleId = payload.sub;
-
-            let user = await this.usersService.findByEmail(email);
-            
-            if (!user) {
-                user = await this.usersService.create({
-                    email: email,
-                    name: name,
-                    googleId: googleId,
-                    isActive: true,
-                });
-            } else if (!user.googleId) {
-                await this.usersService.updateGoogleId(user._id.toString(), googleId);
-                user = await this.usersService.findByEmail(email);
-            }
-
-            // KIỂM TRA user KHÔNG NULL
-            if (!user) {
-                throw new UnauthorizedException('User not found or could not be created');
-            }
-
-            const jwtPayload = { email: user.email, sub: user._id, role: user.role };
-            const access_token = this.jwtService.sign(jwtPayload);
-            const refresh_token = this.jwtService.sign(jwtPayload, { expiresIn: '30d' });
-
-            return {
-                access_token,
-                refresh_token,
-                user: {
-                    id: user._id,
-                    name: user.name,
-                    email: user.email,
-                    role: user.role,
-                },
-            };
-        } catch (error) {
-            console.error('Google token verification failed:', error);
-            throw new UnauthorizedException('Invalid Google token');
-        }
-    }
+    ) { }
 
     async register(name: string, email: string, password: string) {
         // Check if user already exists
