@@ -16,7 +16,7 @@ export class VNPayService {
         @InjectModel(Order.name) private orderModel: Model<Order>,
     ) { }
 
-    createPaymentUrl(orderId: string, amount: number, returnUrl: string): string {
+    createPaymentUrl(orderId: string, amount: number, returnUrl: string, ipAddr: string): string {
         const createDate = this.formatDate(new Date());
         const orderId_vnp = `${orderId}_${Date.now()}`;
 
@@ -24,10 +24,10 @@ export class VNPayService {
             vnp_Version: '2.1.0',
             vnp_Command: 'pay',
             vnp_TmnCode: this.tmnCode,
-            vnp_Amount: (amount * 100).toString(), // VNPay requires amount in VND * 100
+            vnp_Amount: Math.round(amount * 100).toString(),
             vnp_CreateDate: createDate,
             vnp_CurrCode: 'VND',
-            vnp_IpAddr: '127.0.0.1',
+            vnp_IpAddr: ipAddr,
             vnp_Locale: 'vn',
             vnp_OrderInfo: `BookStore Order ${orderId}`,
             vnp_OrderType: 'other',
@@ -37,13 +37,20 @@ export class VNPayService {
 
         // Sort params and create query string
         const sortedParams = this.sortObject(vnpParams);
-        const signData = new URLSearchParams(sortedParams).toString();
+        const signData = Object.keys(sortedParams)
+            .map(key => `${key}=${encodeURIComponent(sortedParams[key])}`)
+            .join('&');
+
         const hmac = crypto.createHmac('sha512', this.secretKey);
         const signed = hmac.update(Buffer.from(signData, 'utf-8')).digest('hex');
 
         sortedParams['vnp_SecureHash'] = signed;
-        const finalUrl = `${this.vnpUrl}?${new URLSearchParams(sortedParams).toString()}`;
 
+        // URL cuối cùng cũng nên dùng encodeURIComponent
+        const queryString = Object.keys(sortedParams)
+            .map(key => `${key}=${encodeURIComponent(sortedParams[key])}`)
+            .join('&');
+        const finalUrl = `${this.vnpUrl}?${queryString}`;
         return finalUrl;
     }
 
@@ -53,7 +60,9 @@ export class VNPayService {
         delete params['vnp_SecureHashType'];
 
         const sortedParams = this.sortObject(params);
-        const signData = new URLSearchParams(sortedParams).toString();
+        const signData = Object.keys(sortedParams)
+            .map(key => `${key}=${encodeURIComponent(sortedParams[key])}`)
+            .join('&');
         const hmac = crypto.createHmac('sha512', this.secretKey);
         const signed = hmac.update(Buffer.from(signData, 'utf-8')).digest('hex');
 

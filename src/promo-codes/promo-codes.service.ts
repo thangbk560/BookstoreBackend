@@ -61,4 +61,21 @@ export class PromoCodesService {
             throw new NotFoundException(`Promo code with ID ${id} not found`);
         }
     }
+
+    async calculateDiscount(code: string, orderValue: number): Promise<number> {
+    const promoCode = await this.validate(code, orderValue); // Tái sử dụng hàm validate có sẵn
+    
+    let discountAmount = 0;
+    if (promoCode.type === 'percentage') {
+        discountAmount = (orderValue * promoCode.value) / 100;
+        if (promoCode.maxDiscount) {
+            discountAmount = Math.min(discountAmount, promoCode.maxDiscount);
+        }
+    } else {
+        discountAmount = promoCode.value;
+    }
+    
+    // Đảm bảo không giảm quá tổng tiền hàng
+    return Math.min(discountAmount, orderValue);
+    }
 }

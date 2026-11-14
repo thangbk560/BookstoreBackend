@@ -40,6 +40,19 @@ export class OrdersService {
         return order;
     }
 
+    async findById(id: string): Promise<Order | null> {
+        const order = await this.orderModel
+            .findById(id)
+            .populate('items.book')
+            .exec();
+
+        if (!order) {
+            throw new NotFoundException(`Order #${id} not found`);
+        }
+
+        return order;
+    }
+
     async updateStatus(id: string, status: string): Promise<Order | null> {
         const order = await this.orderModel.findById(id).exec();
 
