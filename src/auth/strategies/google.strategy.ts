@@ -46,11 +46,18 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
                     email: emails[0].value,
                     name: name.givenName + ' ' + name.familyName,
                     googleId: id,
-                    // No password for OAuth users
                 });
             }
         }
 
-        done(null, user);
+        // ✅ QUAN TRỌNG: Đảm bảo trả về object có _id
+        const userObject = user.toObject ? user.toObject() : user;
+        
+        done(null, {
+            _id: userObject._id,        // Đảm bảo có _id
+            email: userObject.email,
+            name: userObject.name,
+            role: userObject.role || 'user',
+        });
     }
 }

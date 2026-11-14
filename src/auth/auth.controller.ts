@@ -64,15 +64,31 @@ export class AuthController {
     @Get('google/callback')
     @UseGuards(AuthGuard('google'))
     async googleAuthCallback(@Request() req, @Res() res) {
-        // Generate JWT for the authenticated user
-        const payload = { email: req.user.email, sub: req.user._id, role: req.user.role };
-        const access_token = this.authService.generateToken(payload);
-        const refresh_token = this.authService.generateToken(payload, '30d');
+        try {
+            const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+            
+            if (!req.user) {
+                return res.redirect(`${frontendUrl}/auth/login?error=no_user_data`);
+            }
 
-        // Redirect to frontend with tokens
-        res.redirect(
-            `${process.env.FRONTEND_URL}/auth/callback?access_token=${access_token}&refresh_token=${refresh_token}`
-        );
+            // Tạo JWT tokens
+            const payload = { 
+                email: req.user.email, 
+                sub: req.user._id, 
+                role: req.user.role || 'user' 
+            };
+            
+            const access_token = this.authService.generateToken(payload);
+            const refresh_token = this.authService.generateToken(payload, '30d');
+
+            // Redirect về frontend với tokens
+            const redirectUrl = `${frontendUrl}/auth/callback?access_token=${access_token}&refresh_token=${refresh_token}`;
+            
+            res.redirect(redirectUrl);
+        } catch (error) {
+            console.error('Google callback error:', error);
+            res.redirect(`${process.env.FRONTEND_URL}/auth/login?error=auth_failed`);
+        }
     }
 
     // OTP endpoints
